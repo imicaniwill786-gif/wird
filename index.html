@@ -73,6 +73,10 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .hs b{display:block;font-family:var(--f-display);font-size:1.2rem;line-height:1.1;font-variant-numeric:tabular-nums}
 .hs span{font-size:.7rem;opacity:.82}
 .hs .ma{font-family:var(--f-urdu);font-size:1rem;color:var(--hero-gold);font-weight:700}
+.daynav{display:flex;gap:6px;margin-top:9px;position:relative;z-index:1}
+.daynav button{border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:var(--on-hero);border-radius:999px;padding:4px 11px;font-size:.74rem;font-weight:600}
+.daynav button:disabled{opacity:.35;cursor:default}
+.banner.ahead{background:var(--gold-soft)}
 .banner{display:flex;align-items:center;gap:8px;background:var(--accent-soft);border-radius:12px;padding:8px 10px;font-size:.8rem}
 .banner span{min-width:0}
 .banner button{margin-left:auto;border:0;background:var(--accent);color:var(--surface);border-radius:999px;padding:5px 11px;font-weight:600;font-size:.76rem;white-space:nowrap;flex:none}
@@ -205,7 +209,7 @@ input[type="date"]{min-height:40px}
   <div id="viewToday" style="display:flex;flex-direction:column;gap:14px">
     <section class="hero" aria-label="Today's progress">
       <div class="hero-top">
-        <div><p class="eyebrow" id="hDate">Islamic date</p><h1 id="gDate">Today</h1></div>
+        <div><p class="eyebrow" id="hDate">Islamic date</p><h1 id="gDate">Today</h1><div class="daynav"><button type="button" id="prevDay" aria-label="Previous day">‹ Previous</button><button type="button" id="nextDay" aria-label="Next day">Next ›</button></div></div>
         <div class="ring"><svg id="ring" viewBox="0 0 84 84" aria-hidden="true"></svg><div class="mid" id="pct">0%</div></div>
       </div>
       <div class="hero-stats">
@@ -215,11 +219,11 @@ input[type="date"]{min-height:40px}
       </div>
     </section>
 
-    <div class="banner" id="dayBack" hidden><span id="dayBackText">Viewing a past day</span><button type="button" id="todayBtn">Back to today</button></div>
+    <div class="banner" id="dayBack" hidden><span id="dayBackText" style="min-width:0">Viewing a past day</span><button type="button" id="todayBtn">Back to today</button></div>
     <div class="banner" id="bkBanner" hidden><span id="bkText">Back up your progress.</span><button type="button" id="bkNow">Back up</button></div>
 
     <div id="sections" style="display:flex;flex-direction:column;gap:12px"></div>
-    <p class="hint">Tap the circle to count one · press and hold to mark it all done · tap a name to change its count or start date</p>
+    <p class="hint">Tap the circle to count one · press and hold to mark it all done · tap a name to change its count or start date · use Next › to record days ahead</p>
 
     <section class="section" aria-label="Last 14 days">
       <div class="sechead" style="cursor:default"><h2>Last 14 days</h2><small>Tap a day to catch up</small></div>
@@ -325,7 +329,7 @@ input[type="date"]{min-height:40px}
 "use strict";
 const STANDALONE=!!window.WIRD_STANDALONE;
 if(STANDALONE)document.documentElement.classList.add("standalone");
-const QURAN_AYAT=6236, LIST_VERSION=2;
+const QURAN_AYAT=6236, LIST_VERSION=2, MAX_AHEAD=30;
 const SECTIONS=[
   {key:"am",title:"Morning",sub:"After Fajr"},
   {key:"pm",title:"Evening",sub:"After ʿAṣr"},
@@ -463,7 +467,7 @@ function streaks(){
   let cur=0,k=todayKey;if(storedPct(k)<100)k=addDays(k,-1);
   while(storedPct(k)>=100){cur++;k=addDays(k,-1);}
   let best=0,run=0,prev=null;
-  Object.keys(days).sort().forEach(kk=>{if(storedPct(kk)>=100){run=(prev&&addDays(prev,1)===kk)?run+1:1;prev=kk;best=Math.max(best,run);}else{prev=null;run=0;}});
+  Object.keys(days).filter(kk=>kk<=todayKey).sort().forEach(kk=>{if(storedPct(kk)>=100){run=(prev&&addDays(prev,1)===kk)?run+1:1;prev=kk;best=Math.max(best,run);}else{prev=null;run=0;}});
   return{cur,best:Math.max(best,cur)};
 }
 
@@ -501,8 +505,11 @@ function renderToday(){
   $("gDate").textContent=d.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"});
   let hij="";try{hij=new Intl.DateTimeFormat("en-GB-u-ca-islamic-umalqura",{day:"numeric",month:"long",year:"numeric"}).format(d).replace(/\s?AH$/,"")+" AH";}catch(e){}
   $("hDate").textContent=hij||String(d.getFullYear());
-  $("dayBack").hidden=isToday;
-  if(!isToday)$("dayBackText").textContent="Viewing "+d.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"})+". Taps update that day.";
+  const ahead=viewKey>todayKey,short_=d.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});
+  $("dayBack").hidden=isToday;$("dayBack").classList.toggle("ahead",ahead);
+  if(!isToday)$("dayBackText").textContent=ahead?"Recording ahead for "+short_+". Taps count for that day.":"Viewing "+short_+". Taps update that day.";
+  $("nextDay").disabled=viewKey>=addDays(todayKey,MAX_AHEAD);
+  $("prevDay").disabled=viewKey<=(isKey(settings.start)?settings.start:"2015-01-01");
   const info=dayInfo(viewKey);
   $("ring").innerHTML=ringSVG(info.frac);$("pct").textContent=info.pct+"%";
   if(info.left===0&&info.total){$("doneN").innerHTML='<span class="ma">ما شاء الله</span>';$("doneLbl").textContent="all "+info.total+" done";}
@@ -616,6 +623,8 @@ document.addEventListener("click",e=>{
   const cl=e.target.closest("[data-close]");if(cl){closeSheet(cl.closest("dialog"));return;}
 });
 $("todayBtn").onclick=()=>{viewKey=todayKey;render();};
+$("prevDay").onclick=()=>{viewKey=addDays(viewKey,-1);render();};
+$("nextDay").onclick=()=>{if(viewKey<addDays(todayKey,MAX_AHEAD)){viewKey=addDays(viewKey,1);render();}};
 function checkDay(){const k=keyOf(new Date());if(k!==todayKey){const w=viewKey===todayKey;todayKey=k;if(w)viewKey=k;render();}}
 setInterval(checkDay,30000);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden){checkDay();render();}});
